@@ -10,7 +10,9 @@ const PORT = process.env.PORT || 3000;
 mqttService.init();
 
 app.use(express.json());
-app.use('/api/mqtt', mqttRoutes);
+app.use('/api/mqtt', (req, res, next) => {
+    req.url = process.env.MQTT_BROKER_URL
+});
 
 app.listen(PORT, () => {
     console.log(`Server is running on http://localhost:${PORT}`);
