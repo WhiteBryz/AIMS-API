@@ -1,14 +1,28 @@
 const { database } = require('../config/firebase');
-const { ref, set } = require('firebase/database');
+const { ref, set, get, update } = require('firebase/database');
 
 const saveMessageToFirebase = async (msg) => {
     try {
         const timestamp = Date.now();
-        await set(ref(database, `Example/${timestamp}`), {
-            message: msg,
+        const currentJsonInfo = JSON.parse(msg);
+
+        const year = new Date(timestamp).getFullYear();
+        const month = new Date(timestamp).getMonth() + 1; // Meses en JS son 0-11
+        const day = new Date(timestamp).getDate();
+        await set(ref(database, `Readings/${year}/${month}/${day}/${timestamp}`), {
+            humedadAmbiente: currentJsonInfo.humedadAmbiente,
+            humedadSuelo: {
+                sensor1: currentJsonInfo.humedadSuelo.sensor1,
+                sensor2: currentJsonInfo.humedadSuelo.sensor2,
+            },
+            iluminacion: currentJsonInfo.iluminacion,
+            nivelAgua: currentJsonInfo.nivelAgua,
+            riegoManual: currentJsonInfo.riegoManual,
+            temperaturaAmbiente: currentJsonInfo.temperaturaAmbiente,
             timestamp,
         });
-        console.log('Message saved to Firebase');
+
+        console.log('Message and statistics updated in Firebase');
     } catch (error) {
         console.error('Error saving message to Firebase:', error);
     }
