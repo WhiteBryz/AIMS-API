@@ -20,7 +20,6 @@ const saveMessageToFirebase = async (msg) => {
             humedadSuelo: currentJsonInfo.humedadSuelo,
             iluminacion: currentJsonInfo.iluminacion,
             nivelAgua: currentJsonInfo.nivelAgua,
-            riegoManual: currentJsonInfo.riegoManual,
             temperaturaAmbiente: currentJsonInfo.temperaturaAmbiente,
         });
 
@@ -36,15 +35,33 @@ const saveMessageToFirebase = async (msg) => {
 
         // Calcular estadísticas para cada campo
         const estadisticas = {
-            humedadAmbiente: calcularEstadisticas(lecturas, "humedadAmbiente"),
-            humedadSuelo: calcularEstadisticas(lecturas, "humedadSuelo"),
-            iluminacion: calcularEstadisticas(lecturas, "iluminacion"),
-            nivelAgua: calcularEstadisticas(lecturas, "nivelAgua"),
-            temperaturaAmbiente: calcularEstadisticas(lecturas, "temperaturaAmbiente"),
+            lastTimeStamp: {
+                lastTimeStamp: currentJsonInfo.timestamp
+            },
+            humedadAmbiente: {
+                estadistics: calcularEstadisticas(lecturas, "humedadAmbiente"),
+                actual: currentJsonInfo.humedadAmbiente
+            },
+            humedadSuelo: {
+                estadisticas: calcularEstadisticas(lecturas, "humedadSuelo"),
+                actual: currentJsonInfo.humedadSuelo
+            },
+            iluminacion:{
+                estadisticas: calcularEstadisticas(lecturas, "iluminacion"),
+                actual: currentJsonInfo.iluminacion
+            },
+            nivelAgua:{
+                estadisticas: calcularEstadisticas(lecturas, "nivelAgua"),
+                actual: currentJsonInfo.nivelAgua
+            },
+            temperaturaAmbiente:{
+                estadisticas: calcularEstadisticas(lecturas, "temperaturaAmbiente"),
+                actual: currentJsonInfo.temperaturaAmbiente
+            },
         };
 
         // Actualizar las estadísticas diarias
-        const statsRef = ref(database, `Statistics/`);
+        const statsRef = ref(database, `Statistics/daily`);
         await set(statsRef, estadisticas);
 
         console.log("Lectura guardada y estadísticas actualizadas.");
@@ -103,22 +120,30 @@ const subscribeToTopic = (req, res) => {
     });
 };
 
-// Función para calcular el mínimo, máximo y promedio
-function calcularEstadisticas(lecturas, campo) {
+const calcularEstadisticas = (lecturas, campo) => {
     let suma = 0;
-    let min = Number.POSITIVE_INFINITY;
-    let max = Number.NEGATIVE_INFINITY;
-  
+    let min = Infinity;
+    let max = -Infinity;
+
     lecturas.forEach((lectura) => {
-      const valor = lectura[campo];
-      if (valor < min) min = valor;
-      if (valor > max) max = valor;
-      suma += valor;
+        const valor = lectura[campo];
+        const timestamp = lectura.timestamp;
+
+        if (valor !== undefined) {
+            suma += valor;
+            if (valor < min) min = valor;
+            if (valor > max) max = valor;
+        }
     });
-  
+
     const promedio = Math.round(suma / lecturas.length);
-    return { min, max, promedio };
-  }
+
+    return {
+        promedio,
+        min,
+        max
+    };
+};
 
 
 module.exports = {
