@@ -9,81 +9,47 @@ const saveMessageToFirebase = async (msg) => {
         const year = new Date(timestamp).getFullYear();
         const month = new Date(timestamp).getMonth() + 1; // Meses en JS son 0-11
         const day = new Date(timestamp).getDate();
-        await set(ref(database, `Readings/${year}/${month}/${day}/${timestamp}`), {
+        const lecturaPath = `Readings/${year}/${month}/${day}/${timestamp}`;
+        
+        // Guardar la nueva lectura
+        await set(ref(database, lecturaPath), {
             fecha: currentJsonInfo.fecha,
             hora: currentJsonInfo.hora,
+            timestamp: currentJsonInfo.timestamp,
             humedadAmbiente: currentJsonInfo.humedadAmbiente,
-            humedadSuelo: {
-                sensor1: currentJsonInfo.humedadSuelo.sensor1,
-                sensor2: currentJsonInfo.humedadSuelo.sensor2,
-            },
+            humedadSuelo: currentJsonInfo.humedadSuelo,
             iluminacion: currentJsonInfo.iluminacion,
             nivelAgua: currentJsonInfo.nivelAgua,
             riegoManual: currentJsonInfo.riegoManual,
             temperaturaAmbiente: currentJsonInfo.temperaturaAmbiente,
-            timestamp,
         });
 
-        // Actualiza estadísticas
-        const statsRef = ref(database, `Statistics/daily`);
-        const statsSnapshot = await get(statsRef);
-        const currentStats = statsSnapshot.val() || {};
+        // Obtener todas las lecturas del día
+        const lecturasRef = ref(database, `Readings/${year}/${month}/${day}`);
+        const lecturasSnapshot = await get(lecturasRef);
+        const lecturas = lecturasSnapshot.exists() ? Object.values(lecturasSnapshot.val()) : [];
 
-        const countLecturas = currentStats.countLecturas || 0;
+        if (lecturas.length === 0) {
+            console.log("No hay lecturas para calcular estadísticas.");
+            return;
+        }
 
-        // Variables de lectura actual
-        const humedadAmbiente = currentJsonInfo.humedadAmbiente || 0;
-        const sensor1 = currentJsonInfo.humedadSuelo.sensor1 || 0;
-        const sensor2 = currentJsonInfo.humedadSuelo.sensor2 || 0;
-        const iluminacion = currentJsonInfo.iluminacion || 0;
-        const temperaturaAmbiente = currentJsonInfo.temperaturaAmbiente || 0;
-        const nivelAgua = currentJsonInfo.nivelAgua || 0;
-        const lastDayRegistered = currentJsonInfo.fecha || 0;
-        const lastHourRegistered = currentJsonInfo.hora || 0;
-
-        // Actualiza promedio, máximo y mínimo
-        const updateStats = {
-            countLecturas: countLecturas + 1,
-            lastDayRegistered: lastDayRegistered,
-            lastHourRegistered: lastHourRegistered,
-            humedadAmbiente: {
-                currentHumedadAmbiente: humedadAmbiente,
-                promedioHumedadAmbiente: updateAverage(currentStats.humedadAmbiente?.promedioHumedadAmbiente, humedadAmbiente, countLecturas + 1),
-                maxHumedadAmbiente: Math.max(currentStats.humedadAmbiente?.maxHumedadAmbiente || -Infinity, humedadAmbiente),
-                minHumedadAmbiente: Math.min(currentStats.humedadAmbiente?.minHumedadAmbiente || Infinity, humedadAmbiente),
-            },
-            sensor1: {
-                currentHumedadSensor1: sensor1,
-                promedioHumedadSensor1: updateAverage(currentStats.sensor1?.promedioHumedadSensor1, sensor1, countLecturas + 1),
-                maxHumedadSensor1: Math.max(currentStats.sensor2?.maxHumedadSensor1 || -Infinity, sensor2),
-                minHumedadSensor1: Math.min(currentStats.sensor2?.minHumedadSensor1 || Infinity, sensor2),
-            },
-            sensor2: {
-                currentHumedadSensor2: sensor2,
-                promedioHumedadSensor2: updateAverage(currentStats.sensor2?.promedioHumedadSensor2, sensor2, countLecturas + 1),
-                maxHumedadSensor2: Math.max(currentStats.maxHumedadSensor2 || -Infinity, sensor2),
-                minHumedadSensor2: Math.min(currentStats.minHumedadSensor2 || Infinity, sensor2),
-            },
-            temperaturaAmbiente: {
-                currentTemperaturaAmbiente: temperaturaAmbiente,
-                promedioTemperaturaAmbiente: updateAverage(currentStats.temperaturaAmbiente?.promedioTemperaturaAmbiente, temperaturaAmbiente, countLecturas + 1),
-                maxTemperaturaAmbiente: Math.max(currentStats.temperaturaAmbiente?.maxTemperaturaAmbiente || -Infinity, temperaturaAmbiente),
-                minTemperaturaAmbiente: Math.min(currentStats.temperaturaAmbiente?.minTemperaturaAmbiente || Infinity, temperaturaAmbiente),
-            },
-            iluminacion: {
-                currentIluminacion: iluminacion,
-                iluminacionMax: Math.max(currentStats.iluminacionMax || -Infinity, iluminacion),
-            },
-            nivelAgua: {
-                estanque1: nivelAgua
-            },
+        // Calcular estadísticas para cada campo
+        const estadisticas = {
+            humedadAmbiente: calcularEstadisticas(lecturas, "humedadAmbiente"),
+            humedadSuelo: calcularEstadisticas(lecturas, "humedadSuelo"),
+            iluminacion: calcularEstadisticas(lecturas, "iluminacion"),
+            nivelAgua: calcularEstadisticas(lecturas, "nivelAgua"),
+            temperaturaAmbiente: calcularEstadisticas(lecturas, "temperaturaAmbiente"),
         };
 
-        await update(statsRef, updateStats);
+        // Actualizar las estadísticas diarias
+        const statsRef = ref(database, `Statistics/`);
+        await set(statsRef, estadisticas);
 
-        console.log('Message and statistics updated in Firebase');
+        console.log("Lectura guardada y estadísticas actualizadas.");
     } catch (error) {
-        console.error('Error saving message to Firebase:', error);
+        console.error("Error saving message to Firebase:", error);
     }
 };
 
@@ -136,6 +102,24 @@ const subscribeToTopic = (req, res) => {
         }
     });
 };
+
+// Función para calcular el mínimo, máximo y promedio
+function calcularEstadisticas(lecturas, campo) {
+    let suma = 0;
+    let min = Number.POSITIVE_INFINITY;
+    let max = Number.NEGATIVE_INFINITY;
+  
+    lecturas.forEach((lectura) => {
+      const valor = lectura[campo];
+      if (valor < min) min = valor;
+      if (valor > max) max = valor;
+      suma += valor;
+    });
+  
+    const promedio = Math.round(suma / lecturas.length);
+    return { min, max, promedio };
+  }
+
 
 module.exports = {
     saveMessageToFirebase,
